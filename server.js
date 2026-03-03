@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const lighthouse = require("lighthouse").default;
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
 
 const app = express();
 
@@ -15,13 +15,14 @@ async function runLighthouse(url, strategy) {
 
   try {
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage"
-      ]
-    });
+  headless: true,
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage"
+  ]
+});
 
     const wsEndpoint = browser.wsEndpoint();
     const port = new URL(wsEndpoint).port;
