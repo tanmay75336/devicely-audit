@@ -1,63 +1,50 @@
 const express = require("express");
-const axios = require("axios");
 const cors = require("cors");
+const lighthouse = require("lighthouse");
+const chromeLauncher = require("chrome-launcher");
 
 const app = express();
 
-require("dotenv").config();
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
 
-app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 5001;
-const API_KEY = (process.env.GOOGLE_API_KEY || "").trim();
+const PORT = process.env.PORT || 10000;
 
-if (!API_KEY) {
-  console.warn("GOOGLE_API_KEY is not set. /audit will fail until it is configured.");
-}
+async function runLighthouse(url, strategy) {
+  const chrome = await chromeLauncher.launch({
+    chromeFlags: [
+      "--headless",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage"
+    ]
+  });
 
-async function fetchPageSpeed(url, strategy) {
-  if (!API_KEY) {
-    throw new Error("GOOGLE_API_KEY is missing on the server.");
-  }
+  const options = {
+    port: chrome.port,
+    output: "json",
+    logLevel: "error",
+    onlyCategories: ["performance", "accessibility", "seo", "best-practices"],
+    emulatedFormFactor: strategy === "mobile" ? "mobile" : "desktop"
+  };
 
-  try {
-    const response = await axios.get(
-      "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
-      {
-        params: {
-          url,
-          key: API_KEY,
-          strategy,
-          category: ["performance", "accessibility", "seo", "best-practices"],
-        },
-        timeout: 60000,
-      }
-    );
+  const runnerResult = await lighthouse(url, options);
 
-    const categories = response.data.lighthouseResult.categories;
+  const categories = runnerResult.lhr.categories;
 
-    return {
-      performance: Math.round(categories.performance.score * 100),
-      accessibility: Math.round(categories.accessibility.score * 100),
-      seo: Math.round(categories.seo.score * 100),
-      bestPractices: Math.round(categories["best-practices"].score * 100),
-    };
-  } catch (error) {
-    if (error.response) {
-      const status = error.response.status;
+  await chrome.kill();
 
-      if (status === 429) {
-        throw new Error("Google API quota exceeded (429).");
-      }
-
-      throw new Error(
-        error.response.data?.error?.message || "Google API request failed."
-      );
-    }
-
-    throw new Error("Network or timeout error.");
-  }
+  return {
+    performance: Math.round(categories.performance.score * 100),
+    accessibility: Math.round(categories.accessibility.score * 100),
+    seo: Math.round(categories.seo.score * 100),
+    bestPractices: Math.round(categories["best-practices"].score * 100)
+  };
 }
 
 app.post("/audit", async (req, res) => {
@@ -68,30 +55,25 @@ app.post("/audit", async (req, res) => {
       return res.status(400).json({ error: "URL is required." });
     }
 
-    const mobile = await fetchPageSpeed(url, "mobile");
-    const desktop = await fetchPageSpeed(url, "desktop");
+    const mobile = await runLighthouse(url, "mobile");
+    const desktop = await runLighthouse(url, "desktop");
 
-    return res.json({
-      mobile,
-      desktop,
-    });
+    res.json({ mobile, desktop });
+
   } catch (error) {
-    console.error("Audit Error:", error.message);
-
-    return res.status(500).json({
-      error: error.message,
-    });
+    console.error("Lighthouse Error:", error);
+    res.status(500).json({ error: "Lighthouse execution failed." });
   }
 });
 
 app.get("/", (req, res) => {
   res.json({
     ok: true,
-    service: "devicely-audit",
-    hasGoogleApiKey: Boolean(API_KEY),
+    service: "devicely-lighthouse",
+    mode: "direct-lighthouse"
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`PageSpeed Audit Service running on port ${PORT}`);
+  console.log(`Lighthouse Service running on port ${PORT}`);
 });
