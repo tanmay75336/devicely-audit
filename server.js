@@ -21,17 +21,13 @@ async function runLighthouse(url, strategy) {
   try {
     // Launch Puppeteer using installed Chromium
     browser = await puppeteer.launch({
-      headless: "new",
-      executablePath: puppeteer.executablePath(),
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-        "--no-zygote"
-      ]
-    });
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage"
+  ]
+});
 
     // Get debugging port from wsEndpoint
     const wsEndpoint = browser.wsEndpoint();
