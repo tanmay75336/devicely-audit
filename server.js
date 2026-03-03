@@ -7,7 +7,12 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || "";
+if (!process.env.GOOGLE_API_KEY) {
+  console.error("❌ GOOGLE_API_KEY is not set!");
+  process.exit(1);
+}
+
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
 async function fetchPageSpeed(url, strategy) {
   const endpoint = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(
