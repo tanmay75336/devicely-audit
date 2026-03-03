@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const lighthouse = require("lighthouse");
-const chromeLauncher = require("chrome-launcher");
+const puppeteer = require("puppeteer");
 
 const app = express();
 
@@ -16,22 +16,26 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 
 async function runLighthouse(url, strategy) {
-  let chrome;
+  let browser;
 
   try {
-    chrome = await chromeLauncher.launch({
-      chromeFlags: [
-        "--headless=new",
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: [
         "--no-sandbox",
-        "--disable-gpu",
+        "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-gpu",
         "--single-process",
         "--no-zygote"
       ]
     });
 
+    const wsEndpoint = browser.wsEndpoint();
+    const port = new URL(wsEndpoint).port;
+
     const options = {
-      port: chrome.port,
+      port: port,
       output: "json",
       logLevel: "error",
       onlyCategories: [
@@ -55,15 +59,11 @@ async function runLighthouse(url, strategy) {
     };
 
   } catch (err) {
-    console.error("LIGHTHOUSE INTERNAL ERROR:", err);
+    console.error("LIGHTHOUSE ERROR:", err);
     throw new Error("Lighthouse execution failed: " + err.message);
   } finally {
-    if (chrome) {
-      try {
-        await chrome.kill();
-      } catch (e) {
-        console.error("Failed to kill Chrome:", e.message);
-      }
+    if (browser) {
+      await browser.close();
     }
   }
 }
@@ -76,24 +76,14 @@ app.post("/audit", async (req, res) => {
       return res.status(400).json({ error: "URL is required." });
     }
 
-    // Validate URL
-    try {
-      new URL(url);
-    } catch {
-      return res.status(400).json({ error: "Invalid URL format." });
-    }
-
     const mobile = await runLighthouse(url, "mobile");
     const desktop = await runLighthouse(url, "desktop");
 
-    return res.json({ mobile, desktop });
+    res.json({ mobile, desktop });
 
   } catch (error) {
-    console.error("FULL LIGHTHOUSE ERROR:", error);
-
-    return res.status(500).json({
-      error: error.message
-    });
+    console.error("FULL ERROR:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -101,7 +91,7 @@ app.get("/", (req, res) => {
   res.json({
     ok: true,
     service: "devicely-lighthouse",
-    mode: "direct-lighthouse"
+    mode: "puppeteer-lighthouse"
   });
 });
 
