@@ -1,52 +1,42 @@
 const express = require("express");
 const cors = require("cors");
-const lighthouse = require("lighthouse");
+const lighthouse = require("lighthouse").default;
 const puppeteer = require("puppeteer");
 
 const app = express();
 
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
-
+app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 async function runLighthouse(url, strategy) {
   let browser;
 
   try {
-    // Launch Puppeteer using installed Chromium
     browser = await puppeteer.launch({
-  headless: true,
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage"
-  ]
-});
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage"
+      ]
+    });
 
-    // Get debugging port from wsEndpoint
     const wsEndpoint = browser.wsEndpoint();
     const port = new URL(wsEndpoint).port;
 
-    const options = {
-      port: port,
+    const runnerResult = await lighthouse(url, {
+      port,
       output: "json",
-      logLevel: "error",
       onlyCategories: [
         "performance",
         "accessibility",
         "seo",
         "best-practices"
       ],
-      emulatedFormFactor: strategy === "mobile" ? "mobile" : "desktop"
-    };
-
-    const runnerResult = await lighthouse(url, options);
+      emulatedFormFactor: strategy
+    });
 
     const categories = runnerResult.lhr.categories;
 
@@ -57,56 +47,31 @@ async function runLighthouse(url, strategy) {
       bestPractices: Math.round(categories["best-practices"].score * 100)
     };
 
-  } catch (err) {
-    console.error("LIGHTHOUSE INTERNAL ERROR:", err);
-    throw new Error("Lighthouse execution failed: " + err.message);
   } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (e) {
-        console.error("Failed to close browser:", e.message);
-      }
-    }
+    if (browser) await browser.close();
   }
 }
 
 app.post("/audit", async (req, res) => {
   try {
     const { url } = req.body;
-
-    if (!url) {
-      return res.status(400).json({ error: "URL is required." });
-    }
-
-    // Validate URL format
-    try {
-      new URL(url);
-    } catch {
-      return res.status(400).json({ error: "Invalid URL format." });
-    }
+    if (!url) return res.status(400).json({ error: "URL required" });
 
     const mobile = await runLighthouse(url, "mobile");
     const desktop = await runLighthouse(url, "desktop");
 
-    return res.json({ mobile, desktop });
+    res.json({ mobile, desktop });
 
-  } catch (error) {
-    console.error("FULL ERROR:", error);
-    return res.status(500).json({
-      error: error.message
-    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 app.get("/", (req, res) => {
-  res.json({
-    ok: true,
-    service: "devicely-lighthouse",
-    mode: "puppeteer-lighthouse"
-  });
+  res.json({ ok: true, platform: "railway" });
 });
 
 app.listen(PORT, () => {
-  console.log(`Lighthouse Service running on port ${PORT}`);
+  console.log("Server running on port", PORT);
 });
