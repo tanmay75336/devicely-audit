@@ -19,8 +19,10 @@ async function runLighthouse(url, strategy) {
   let browser;
 
   try {
+    // Launch Puppeteer using installed Chromium
     browser = await puppeteer.launch({
       headless: "new",
+      executablePath: puppeteer.executablePath(),
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -31,6 +33,7 @@ async function runLighthouse(url, strategy) {
       ]
     });
 
+    // Get debugging port from wsEndpoint
     const wsEndpoint = browser.wsEndpoint();
     const port = new URL(wsEndpoint).port;
 
@@ -59,11 +62,15 @@ async function runLighthouse(url, strategy) {
     };
 
   } catch (err) {
-    console.error("LIGHTHOUSE ERROR:", err);
+    console.error("LIGHTHOUSE INTERNAL ERROR:", err);
     throw new Error("Lighthouse execution failed: " + err.message);
   } finally {
     if (browser) {
-      await browser.close();
+      try {
+        await browser.close();
+      } catch (e) {
+        console.error("Failed to close browser:", e.message);
+      }
     }
   }
 }
@@ -76,14 +83,23 @@ app.post("/audit", async (req, res) => {
       return res.status(400).json({ error: "URL is required." });
     }
 
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      return res.status(400).json({ error: "Invalid URL format." });
+    }
+
     const mobile = await runLighthouse(url, "mobile");
     const desktop = await runLighthouse(url, "desktop");
 
-    res.json({ mobile, desktop });
+    return res.json({ mobile, desktop });
 
   } catch (error) {
     console.error("FULL ERROR:", error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({
+      error: error.message
+    });
   }
 });
 
