@@ -24,7 +24,7 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 async function fetchPageSpeed(url, strategy) {
   const endpoint = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(
     url
-  )}&strategy=${strategy}&key=${GOOGLE_API_KEY}`;
+  )}&strategy=${strategy}&category=performance&category=accessibility&category=seo&category=best-practices&key=${GOOGLE_API_KEY}`;
 
   const response = await fetch(endpoint);
 
@@ -36,32 +36,31 @@ async function fetchPageSpeed(url, strategy) {
 
   const data = await response.json();
 
-  // If Google returns API-level error
   if (data.error) {
     console.error("Google API Error:", data.error);
     throw new Error(data.error.message || "Google API returned an error");
   }
 
-  if (!data.lighthouseResult || !data.lighthouseResult.categories) {
+  const categories = data?.lighthouseResult?.categories;
+
+  if (!categories) {
     console.error("Invalid Lighthouse response:", data);
     throw new Error("Invalid Lighthouse response from Google");
   }
 
-  const categories = data.lighthouseResult.categories;
-
   return {
     performance: categories.performance?.score != null
       ? Math.round(categories.performance.score * 100)
-      : null,
+      : 0,
     accessibility: categories.accessibility?.score != null
       ? Math.round(categories.accessibility.score * 100)
-      : null,
+      : 0,
     seo: categories.seo?.score != null
       ? Math.round(categories.seo.score * 100)
-      : null,
+      : 0,
     bestPractices: categories["best-practices"]?.score != null
       ? Math.round(categories["best-practices"].score * 100)
-      : null,
+      : 0,
   };
 }
 
@@ -72,8 +71,8 @@ app.post("/audit", async (req, res) => {
   try {
     const { url } = req.body;
 
-    if (!url) {
-      return res.status(400).json({ error: "URL is required" });
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Valid URL is required" });
     }
 
     const [mobile, desktop] = await Promise.all([
