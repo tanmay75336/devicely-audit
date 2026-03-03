@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const lighthouse = require("lighthouse").default;
-const puppeteer = require("puppeteer-core");
+const lighthouse = require("lighthouse");
+const puppeteer = require("puppeteer");
 
 const app = express();
 
@@ -15,31 +15,31 @@ async function runLighthouse(url, strategy) {
 
   try {
     browser = await puppeteer.launch({
-  headless: true,
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage"
-  ]
-});
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage"
+      ]
+    });
 
     const wsEndpoint = browser.wsEndpoint();
     const port = new URL(wsEndpoint).port;
 
-    const runnerResult = await lighthouse(url, {
+    const result = await lighthouse(url, {
       port,
       output: "json",
+      logLevel: "error",
       onlyCategories: [
         "performance",
         "accessibility",
         "seo",
         "best-practices"
       ],
-      emulatedFormFactor: strategy
+      emulatedFormFactor: strategy === "mobile" ? "mobile" : "desktop"
     });
 
-    const categories = runnerResult.lhr.categories;
+    const categories = result.lhr.categories;
 
     return {
       performance: Math.round(categories.performance.score * 100),
@@ -56,7 +56,7 @@ async function runLighthouse(url, strategy) {
 app.post("/audit", async (req, res) => {
   try {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: "URL required" });
+    if (!url) return res.status(400).json({ error: "URL is required" });
 
     const mobile = await runLighthouse(url, "mobile");
     const desktop = await runLighthouse(url, "desktop");
@@ -70,9 +70,9 @@ app.post("/audit", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.json({ ok: true, platform: "railway" });
+  res.json({ ok: true, service: "devicely-lighthouse" });
 });
 
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("Server running on port " + PORT);
 });
